@@ -5,7 +5,6 @@ import 'package:feed_app/core/supabase_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class LikeState {
-  
   final bool isLiked;
   final int likes;
 
@@ -24,11 +23,13 @@ class LikeNotifier extends Notifier<LikeState> {
   final Post post;
   static const userId = 'user_123';
   static const debounceDelay = Duration(milliseconds: 800);
+  static const networkTimeout = Duration(seconds: 3);
 
   Timer? debounceTimer;
   LikeState? serverState;
   bool isSyncing = false;
   bool hasPendingSync = false;
+  bool hasUserTapped = false;
 
   @override
   LikeState build() {
@@ -43,6 +44,7 @@ class LikeNotifier extends Notifier<LikeState> {
   }
 
   Future<void> toggleLike({required void Function() onError}) async {
+    hasUserTapped = true;
     final nextLiked = !state.isLiked;
     final nextLikes = state.likes + (nextLiked ? 1 : -1);
     state = state.copyWith(
@@ -52,7 +54,7 @@ class LikeNotifier extends Notifier<LikeState> {
 
     debounceTimer?.cancel();
     debounceTimer = Timer(debounceDelay, () {
-      syncLike(onError: onError);
+      unawaited(syncLike(onError: onError));
     });
   }
 
@@ -63,7 +65,11 @@ class LikeNotifier extends Notifier<LikeState> {
           .select('post_id')
           .eq('post_id', post.id)
           .eq('user_id', userId)
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(networkTimeout);
+      if (hasUserTapped || isSyncing || (debounceTimer?.isActive ?? false)) {
+        return;
+      }
       if (result == null || state.isLiked) {
         return;
       }
@@ -71,9 +77,7 @@ class LikeNotifier extends Notifier<LikeState> {
       state = hydrated;
 
       serverState = hydrated;
-    }
-    catch (e) 
-    {
+    } catch (e) {
       return;
     }
   }
@@ -85,18 +89,18 @@ class LikeNotifier extends Notifier<LikeState> {
     }
     while (true) {
       final lastServerState = serverState;
-      if(lastServerState == null) {
-         return;
+      if (lastServerState == null) {
+        return;
       }
 
       final desiredLiked = state.isLiked;
-      if(desiredLiked == lastServerState.isLiked) {
+      if (desiredLiked == lastServerState.isLiked) {
         hasPendingSync = false;
         return;
       }
 
       isSyncing = true;
-      try{
+      try {
         final nextLiked = !lastServerState.isLiked;
         final nextLikes = lastServerState.likes + (nextLiked ? 1 : -1);
 
@@ -111,18 +115,17 @@ class LikeNotifier extends Notifier<LikeState> {
           serverState = serverState!.copyWith(likes: freshCount);
           state = state.copyWith(likes: freshCount);
         }
-      }
-      catch (e){
+      } catch (e) {
         state = lastServerState;
         serverState = lastServerState;
         hasPendingSync = false;
-        onError();
+        Future.microtask(onError);
         return;
-      }finally {
+      } finally {
         isSyncing = false;
       }
 
-      if(!hasPendingSync && state.isLiked == serverState!.isLiked) {
+      if (!hasPendingSync && state.isLiked == serverState!.isLiked) {
         return;
       }
       hasPendingSync = false;
@@ -130,10 +133,9 @@ class LikeNotifier extends Notifier<LikeState> {
   }
 
   Future<void> toggleLikeOnServer() async {
-    await supabase.rpc(
-      'toggle_like',
-      params: {'p_post_id': post.id, 'p_user_id': userId},
-    );
+    await supabase
+        .rpc('toggle_like', params: {'p_post_id': post.id, 'p_user_id': userId})
+        .timeout(networkTimeout);
   }
 
   Future<int?> fetchLikeCount() async {
@@ -142,16 +144,17 @@ class LikeNotifier extends Notifier<LikeState> {
           .from('posts')
           .select('like_count')
           .eq('id', post.id)
-          .single();
+          .single()
+          .timeout(networkTimeout);
       final raw = result['like_count'];
-      if(raw is int) {
+      if (raw is int) {
         return raw;
       }
-      if(raw is num) {
+      if (raw is num) {
         return raw.toInt();
       }
       return null;
-    } catch(ee) {
+    } catch (ee) {
       return null;
     }
   }

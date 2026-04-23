@@ -39,24 +39,29 @@ class PostCard extends ConsumerWidget {
           borderRadius: BorderRadius.circular(8),
           child: Stack(
             children: [
-              GestureDetector(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => PostDetailsScreen(post: post),
-                  ),
-                ),
-                child: Hero(
-                  tag: "post${post.id}",
-                  transitionOnUserGestures: true,
-                  child: CachedNetworkImage(
-                
-                    // height: double.infinity,
-                    width: double.infinity,
-                    imageUrl: post.mediaThumbUrl,
-                    fit: BoxFit.cover,
-                    memCacheWidth: 300,
+              Positioned(
 
+                top: 0,
+                left: 0,
+                 right: 0,
+  // bottom: 15,
+                child: GestureDetector(
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => PostDetailsScreen(post: post),
+                    ),
+                  ),
+                  child: Hero(
+                    tag: "post${post.id}",
+                    transitionOnUserGestures: true,
+                    child: CachedNetworkImage(
+                      // height: double.infinity,
+                      width: double.infinity,
+                      imageUrl: post.mediaThumbUrl,
+                      fit: BoxFit.cover,
+                      memCacheWidth: 300,
+                    ),
                   ),
                 ),
               ),
@@ -67,30 +72,44 @@ class PostCard extends ConsumerWidget {
                 child: Container(
                   color: Colors.white.withValues(alpha: 1),
                   child: Padding(
-                    padding: EdgeInsets.fromLTRB(20,30,0,20),
+                    padding: EdgeInsets.fromLTRB(20, 30, 0, 20),
 
                     child: Row(
                       children: [
                         GestureDetector(
                           onTap: () async {
-                            final snackbarMsg = ScaffoldMessenger.of(context);
                             await ref
                                 .read(likeProvider(post).notifier)
                                 .toggleLike(
                                   onError: () {
-                                   snackbarMsg.showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          "Failed to update your like. Try again!",
-                                        ),
-                                      ),
+                                    if (!context.mounted) {
+                                      return;
+                                    }
+                                    final messenger = ScaffoldMessenger.maybeOf(
+                                      context,
                                     );
+                                    if (messenger == null) {
+                                      return;
+                                    }
+                                    messenger
+                                      ..hideCurrentSnackBar()
+                                      ..showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            "Failed to update your like. Try again!",
+                                          ),
+                                        ),
+                                      );
                                   },
                                 );
                           },
                           child: Icon(
-                            likeState.isLiked ? Icons.favorite : Icons.favorite_border,
-                            color: likeState.isLiked ? Colors.red : Colors.black,
+                            likeState.isLiked
+                                ? Icons.favorite
+                                : Icons.favorite_border,
+                            color: likeState.isLiked
+                                ? Colors.red
+                                : Colors.black,
                           ),
                         ),
                         SizedBox(width: 8),
